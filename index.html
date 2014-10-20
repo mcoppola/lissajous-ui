@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script type="text/javascript" src="/paper-full.js"></script>
+<script type="text/javascript">
+
+	// ------------------------------------------------ //
+	//   TRACK
+	// ------------------------------------------------ //
+	// - Mainains track specific data
+
+	Track = function(notes, name, i) {
+		var self = this;
+
+		self.name = name;
+		self.steps = [];
+		self.beats = {};
+		self.notes = notes;
+		self.pos = { x: 20, y: 40 + 60*i };	
+
+		// set notes to 0 index
+		self.notes.map(function(note, i, ar){ ar[i] = note-1; });
+	}
+
+
+	// ------------------------------------------------ //
+	//   TRACK MANAGER 
+	// ------------------------------------------------ //
+	// - Sets up views 
+	// - Holds all the tracks
+	// - Keeps track of the grid
+
+	TrackManager = function() {
+		var self = this;
+
+		self.tracks = [];
+		self.currentStep = 0;
+
+		self.ui = TrackUI();
+
+		self.grid = {    
+			bpm: 120,
+			stepCount: 16,
+			measure: 4,
+		}
+
+	}
+
+	// ------------------------------------------------ * CRUD 
+
+	TrackManager.prototype.newTrack = function(notes, name) {
+		var self = this;
+
+		var t = new Track(notes, name, self.tracks.length);
+		self.add(t);
+	}
+
+	TrackManager.prototype.add = function(newTracks) {
+		var self = this;
+
+		if (typeof newTracks == []) {
+			newTracks.forEach(function(t) {
+				self.tracks.push(t);
+			});
+		} else {
+			self.tracks.push(newTracks);
+		}
+
+		self.drawView();
+	}
+
+	// ------------------------------------------------ * DRAW 
+	
+	TrackManager.prototype.drawView = function() {
+		var self = this;
+
+		project.clear();
+		self.drawTracks();
+		self.drawBeatNumbers();
+	}
+
+	TrackManager.prototype.drawBeatNumbers = function() {
+		var self = this;
+		self.beatLabels = {};
+
+		for (var i=0; i < self.grid.stepCount; i+=self.grid.measure) {
+			var n = new PointText(self.ui.xPadding + self.ui.trackLabelLength + self.ui.stepLineLength*i + self.ui.stepLineMargin*i, self.ui.yPadding*(self.tracks.length));
+			n.fillColor = self.ui.baseColor;
+			n.content = ((i/self.grid.measure) + 1 );
+			self.beatLabels[i] = n;
+		}
+	}
+
+	TrackManager.prototype.drawTracks = function() {
+		var self = this;
+
+		self.tracks.forEach( function(t){
+			t.steps = [];
+
+			for (var i=0; i < self.grid.stepCount; i++) {
+
+				var step = new paper.Path()
+				step.strokeColor = self.ui.baseColor;
+				var start = new paper.Point(t.pos.x + self.ui.trackLabelLength + self.ui.stepLineLength*i + self.ui.stepLineMargin*i, t.pos.y);
+				step.moveTo(start);
+				step.lineTo(start.add([ self.ui.stepLineLength, 0 ]));
+				step.view.draw();
+				
+				t.steps.push(step);
+
+				t.notes.forEach( function(note) {
+					if (note == i) {
+						var b = new PointText(t.pos.x + self.ui.trackLabelLength + self.ui.stepLineLength*i + self.ui.stepLineMargin*i, t.pos.y - 10);
+						b.fillColor = self.ui.baseColor;
+						b.content = self.ui.noteChar;
+						b.view.draw();
+
+						t.beats[i] = b;
+					}
+				});
+			}
+
+			t.label = new PointText(t.pos.x, t.pos.y);
+			t.label.fillColor = self.ui.baseColor;
+			t.label.content = t.name;
+			t.label.view.draw();
+
+		});
+		
+	}
+
+	TrackManager.prototype.drawAdvanceStep = function() {
+		var self = this;
+
+		self.tracks.forEach( function(t) {
+
+			t.steps[self.currentStep].strokeColor = self.ui.activeStepColor;
+			if (t.beats[self.currentStep]) {
+				t.beats[self.currentStep].fillColor = self.ui.activeNoteColor;
+			}
+
+			if (self.currentStep == 0) {
+				t.steps[self.grid.stepCount - 1].strokeColor = self.ui.baseColor;
+				if (t.beats[self.grid.stepCount - 1]) {	
+					t.beats[self.grid.stepCount - 1].fillColor = self.ui.baseColor;
+				}
+			} else {
+				t.steps[self.currentStep - 1].strokeColor = self.ui.baseColor;
+				if (t.beats[self.currentStep - 1]) {
+					t.beats[self.currentStep - 1].fillColor = self.ui.baseColor;
+				}
+			}
+
+			// Grid labels
+			for (var label in self.beatLabels) {
+				self.beatLabels[label].fillColor = self.ui.baseColor;
+			}
+			if (self.beatLabels[self.currentStep]) {
+				self.beatLabels[self.currentStep].fillColor = self.ui.activeStepColor;
+			} 
+		});
+
+		self.currentStep = (self.currentStep == self.grid.stepCount -1 ) ? 0 : self.currentStep + 1 ;
+	}
+
+	// -------------------------------------------------------------------------------------- //
+	// UI CONFIG VARS ----------------------------------------------------------------------- //
+	//
+	// - loaded by the Track Manger
+
+	TrackUI = function() {
+		return {					 
+									 
+			xPadding:                 20,  // X padding for the canvas view (px)
+			yPadding:                 60,  // Y padding for the canvas view (px)
+
+			stepLineLength:           10,  // Step (sequencer) line length (px)
+			stepLineMargin:            8,  // Step line margin (px)
+			trackLabelLength:         80,  // Width of track label column 
+
+			baseColor:            '#333',  // Color of step lines and notes
+			activeStepColor:   '#00CCFF',  // Color of active step lines
+			activeNoteColor:   '#FF6600',  // Color of notes in the sequencer
+
+			noteChar:                'x',  // The character by which notes are reprecented in the sequencer
+		}
+	}
+
+
+	paper.install(window);
+	window.onload = function() {
+
+		var canvas = document.getElementById('canvas');
+		paper.setup(canvas);
+
+		window.tm = new TrackManager();
+
+		var deltaTime = 0;
+		view.onFrame = function(event) {
+
+			deltaTime += event.delta*1000;	// we want ms		
+			if (deltaTime > (60000/(window.tm.grid.bpm*window.tm.grid.measure))){
+
+				window.tm.drawAdvanceStep();
+
+				deltaTime = 0;
+			}
+
+		}
+	}
+</script>
+</head>
+<body>
+	<canvas id="canvas" resize></canvas>
+</body>
+</html>
